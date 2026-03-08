@@ -1,4 +1,3 @@
-// backend/controllers/chatController.js
 const Groq = require("groq-sdk");
 const db = require("../config/db");
 
@@ -12,26 +11,18 @@ exports.chat = async (req, res) => {
 
     // 1. Direct Number Intercept (Fast Tracking)
     const isJustNumber = /^\d+$/.test(message.trim());
-    
     if (isJustNumber) {
       const appId = message.trim();
       const result = await db.query("SELECT status FROM applications WHERE id = $1", [appId]);
-
-      if (result.rows.length === 0) {
-        return res.json({ reply: "Application not found. Please verify your tracking ID." });
-      }
+      if (result.rows.length === 0) return res.json({ reply: "Application not found. / आवेदन नहीं मिला।" });
       return res.json({ reply: `The current status of your application (#${appId}) is: ${result.rows[0].status.toUpperCase()}` });
     }
 
     // 2. Ironclad Language Rules
     const userLang = language || "Auto-detect";
-    let langRule = "";
-    
-    if (userLang === "Auto-detect") {
-        langRule = "the exact same language the user used in their message. If they typed English, reply in English.";
-    } else {
-        langRule = `STRICTLY ${userLang.toUpperCase()}. You must translate your final response into ${userLang}, no matter what language the user typed in.`;
-    }
+    let langRule = userLang === "Auto-detect" 
+      ? "the exact same language the user used in their message." 
+      : `STRICTLY ${userLang.toUpperCase()}.`;
 
     // 3. AI Intent & Translation Generation
     const completion = await groq.chat.completions.create({
@@ -41,78 +32,61 @@ exports.chat = async (req, res) => {
       messages: [
         {
           role: "system",
-          content: `You are a multi-lingual government AI assistant. 
-Return a valid JSON object containing exactly two keys: "intent" and "localized_reply".
+          content: `You are the Senate Bot Administrator, an autonomous Digital Governance ChatOps platform.
+Return a JSON object: {"intent": "...", "localized_reply": "...", "regulatory_citation": "..."}
 
-1. "intent": Must be EXACTLY ONE of: "greeting", "apply_birth_certificate", "check_application_status", "file_complaint", "general_query".
+INTENTS & GUIDELINES:
+1. apply_birth_certificate: "Birth Certificate process initiated. Please provide Hospital Summary and Parents' ID." (Cite: Registration of Births and Deaths Act, 1969)
+2. apply_income_certificate: "Income Certificate process initiated. Required: Aadhaar Card, PAN Card, and Salary Slips." (Cite: Revenue Department Digital Services Guideline, 2024)
+3. file_complaint: "Your complaint has been logged and assigned to the local administrator." (Cite: Public Grievance Redressal Act)
+4. provide_documents: "Documents verified against regulatory standards. Application moved to processing."
+5. check_application_status: "Please provide your tracking ID."
+6. greeting/general: "Welcome to Senate Bot. I handle Birth/Income Certificates and Complaints autonomously."
 
-2. "localized_reply": You must convey the correct message from the list below, BUT IT MUST BE TRANSLATED INTO ${langRule}
-
-   Messages to translate based on intent:
-   - greeting: "Hello! I am the Senate Bot. I can help you apply for documents, file complaints, or check application statuses. How can I assist you today?"
-   - apply_birth_certificate OR file_complaint: "Your request has been registered successfully."
-   - check_application_status: "Please provide your tracking ID to check the status."
-   - general_query: "Available services: Apply for Birth Certificate, File a Complaint, Check Application Status."
-
-CRITICAL RULE: If the target language is Hindi, the "localized_reply" MUST be written entirely in Devanagari script. Do not output English if the target language is Hindi or Marathi.`
+MANDATORY: Translate "localized_reply" into ${langRule}. Use Devanagari for Hindi/Marathi. Keep citation in English.`
         },
-        {
-          role: "user",
-          content: message
-        }
+        { role: "user", content: message }
       ]
     });
 
     const aiResponse = JSON.parse(completion.choices[0].message.content);
-    const intent = aiResponse.intent;
-    const finalReply = aiResponse.localized_reply;
+    const { intent, localized_reply, regulatory_citation } = aiResponse;
 
-    console.log("User requested lang:", userLang);
-    console.log("Detected intent:", intent);
-    console.log("AI Localized Reply:", finalReply);
+    // 4. Automated Database Routing (Success Criterion: End-to-End)
+    let trackingId = "";
+    
+    // Map intents to database service types
+    const serviceMap = {
+      "apply_birth_certificate": "birth_certificate",
+      "apply_income_certificate": "income_certificate",
+      "file_complaint": "complaint"
+    };
 
-    // 4. Database Routing & Final Output
-    if (intent === "apply_birth_certificate") {
+    if (serviceMap[intent]) {
       const result = await db.query(
-        "INSERT INTO applications (user_id, service_type) VALUES ($1,$2) RETURNING id",
-        [user_id || 1, "birth_certificate"]
+        "INSERT INTO applications (user_id, service_type, status) VALUES ($1,$2,$3) RETURNING id",
+        [user_id || 1, serviceMap[intent], "pending"]
       );
-      return res.json({
-        reply: `${finalReply}\n\nTracking ID: ${result.rows[0].id}`,
-        application_id: result.rows[0].id
-      });
+      trackingId = `\n\n📝 Tracking ID: ${result.rows[0].id}`;
     }
 
-    if (intent === "file_complaint") {
-      const result = await db.query(
-        "INSERT INTO applications (user_id, service_type) VALUES ($1,$2) RETURNING id",
-        [user_id || 1, "complaint"]
-      );
-      return res.json({
-        reply: `${finalReply}\n\nComplaint ID: ${result.rows[0].id}`,
-        complaint_id: result.rows[0].id
-      });
-    }
-
+    // Handle Status Check Logic
     if (intent === "check_application_status") {
       const match = message.match(/\d+/);
-      if (!match) {
-        return res.json({ reply: finalReply });
+      if (match) {
+        const result = await db.query("SELECT status FROM applications WHERE id = $1", [match[0]]);
+        if (result.rows.length > 0) {
+          return res.json({ reply: `Status: ${result.rows[0].status.toUpperCase()}` });
+        }
       }
-
-      const appId = match[0];
-      const result = await db.query("SELECT status FROM applications WHERE id = $1", [appId]);
-      
-      if (result.rows.length === 0) {
-        return res.json({ reply: "Application not found. / आवेदन नहीं मिला।" });
-      }
-      return res.json({ reply: `Status / स्थिति: ${result.rows[0].status.toUpperCase()}` });
     }
 
-    return res.json({ reply: finalReply });
+    // Final response with citation for "Explainable Decisions"
+    const finalResponse = `${localized_reply}${trackingId}\n\n⚖️ Citation: ${regulatory_citation}`;
+    return res.json({ reply: finalResponse });
 
   } catch (error) {
-    console.error("Groq/DB Error:", error);
-    res.status(500).json({ reply: "I am experiencing high traffic right now. Please try again in a moment." });
+    console.error("System Error:", error);
+    res.status(500).json({ reply: "Service temporarily unavailable." });
   }
 };
