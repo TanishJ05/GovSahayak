@@ -1,8 +1,7 @@
 // frontend/lib/screens/main/main_screen.dart
 import 'package:flutter/material.dart';
 import '../home/home_screen.dart'; 
-// We will build MyApplicationsScreen in Part 7, so we'll just use a placeholder for now
-// import '../applications/my_applications_screen.dart';
+import '../applications/my_applications_screen.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({Key? key}) : super(key: key);
@@ -16,7 +15,7 @@ class _MainScreenState extends State<MainScreen> {
 
   final List<Widget> _screens = [
     const HomeScreen(), 
-    const Center(child: Text("Applications Dashboard (Coming in Part 7)")), // Placeholder
+    const MyApplicationsScreen(), 
   ];
 
   @override

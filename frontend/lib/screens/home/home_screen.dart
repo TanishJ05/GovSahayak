@@ -2,8 +2,7 @@
 import 'package:flutter/material.dart';
 import '../../models/chat_message.dart';
 import '../../services/chat_service.dart';
-// We will build ProfileScreen in Part 7
-// import '../profile/profile_screen.dart';
+import '../profile/profile_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({Key? key}) : super(key: key);
@@ -80,7 +79,10 @@ class _HomeScreenState extends State<HomeScreen> {
           IconButton(
             icon: const Icon(Icons.person, color: Colors.white),
             onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Profile coming in Part 7")));
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => const ProfileScreen()),
+              );
             },
           ),
           PopupMenuButton<String>(
